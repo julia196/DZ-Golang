@@ -1,0 +1,120 @@
+basePath: /
+definitions:
+  main.FailedID:
+    properties:
+      id:
+        type: integer
+      reason:
+        type: string
+    type: object
+  main.LoadResult:
+    properties:
+      failed_ids:
+        items:
+          $ref: '#/definitions/main.FailedID'
+        type: array
+      missing_ids:
+        items:
+          type: integer
+        type: array
+      movies:
+        items:
+          $ref: '#/definitions/main.Movie'
+        type: array
+    type: object
+  main.Movie:
+    properties:
+      img:
+        type: string
+      num:
+        type: integer
+      title:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: API для загрузки фильмов с внешнего стенда.
+  title: Movie Service API
+  version: "1.0"
+paths:
+  /last-movie:
+    get:
+      consumes:
+      - application/json
+      description: Находит последний доступный фильм на стенде (бинарный поиск по
+        id).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.Movie'
+        "404":
+          description: Фильмов на стенде нет
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "502":
+          description: Стенд недоступен
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "504":
+          description: Таймаут стенда
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Последний фильм
+      tags:
+      - movies
+  /load-movies:
+    get:
+      consumes:
+      - application/json
+      description: Загружает фильмы со стенда в диапазоне [from; to]. Частичные ошибки
+        возвращаются в полях missing_ids и failed_ids.
+      parameters:
+      - description: Начальный ID (>= 1)
+        in: query
+        name: from
+        required: true
+        type: integer
+      - description: Конечный ID (>= from)
+        in: query
+        name: to
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.LoadResult'
+        "400":
+          description: Неверные параметры from/to
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "502":
+          description: Стенд недоступен
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "504":
+          description: Таймаут стенда
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Загрузка фильмов
+      tags:
+      - movies
+swagger: "2.0"
