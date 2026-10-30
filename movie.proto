@@ -16,7 +16,15 @@ message LoadMoviesRequest {
 message LoadMoviesResponse {
   repeated Movie movies = 1;
   repeated int32 missing_ids = 2;
+<<<<<<< HEAD
+<<<<<<< HEAD
+  repeated FailedID failed_ids = 3;
+=======
   repeated FailedID failed_ids = 3; // ← новое поле
+>>>>>>> 919eb540e39b8ed4907eaef7ee8a5b3b2e1cc1ba
+=======
+  repeated FailedID failed_ids = 3; // ← новое поле
+>>>>>>> 919eb540e39b8ed4907eaef7ee8a5b3b2e1cc1ba
 }
 
 message FailedID {
