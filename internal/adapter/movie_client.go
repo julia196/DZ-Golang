@@ -64,12 +64,9 @@ func (c *MovieClient) GetMovie(ctx context.Context, id int) (domain.Movie, error
 	}
 
 	return domain.Movie{
-		ID:          dto.Num,
-		Title:       dto.Title,
-		Year:        dto.Year,
-		Director:    dto.Director,
-		Description: dto.Description,
-		Actors:      dto.Actors,
-		Genres:      dto.Genres,
+		ID:       dto.Num,
+		Title:    dto.Title,
+		Year:     dto.Year,
+		Director: dto.Director,
 	}, nil
 }

@@ -7,11 +7,12 @@
 package movie
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -222,12 +223,10 @@ func (*GetLastMovieRequest) Descriptor() ([]byte, []int) {
 }
 
 type Movie struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Num           int32                  `protobuf:"varint,1,opt,name=num,proto3" json:"num,omitempty"`
-	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
-	Img           string                 `protobuf:"bytes,3,opt,name=img,proto3" json:"img,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Id       int32  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Title    string `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Year     int32  `protobuf:"varint,3,opt,name=year,proto3" json:"year,omitempty"`
+	Director string `protobuf:"bytes,4,opt,name=director,proto3" json:"director,omitempty"`
 }
 
 func (x *Movie) Reset() {
@@ -260,9 +259,9 @@ func (*Movie) Descriptor() ([]byte, []int) {
 	return file_movie_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *Movie) GetNum() int32 {
+func (x *Movie) GetId() int32 {
 	if x != nil {
-		return x.Num
+		return x.Id
 	}
 	return 0
 }
@@ -274,9 +273,16 @@ func (x *Movie) GetTitle() string {
 	return ""
 }
 
-func (x *Movie) GetImg() string {
+func (x *Movie) GetYear() int32 {
 	if x != nil {
-		return x.Img
+		return x.Year
+	}
+	return 0
+}
+
+func (x *Movie) GetDirector() string {
+	if x != nil {
+		return x.Director
 	}
 	return ""
 }
@@ -298,11 +304,12 @@ const file_movie_proto_rawDesc = "" +
 	"\bFailedID\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"\x15\n" +
-	"\x13GetLastMovieRequest\"A\n" +
-	"\x05Movie\x12\x10\n" +
-	"\x03num\x18\x01 \x01(\x05R\x03num\x12\x14\n" +
-	"\x05title\x18\x02 \x01(\tR\x05title\x12\x10\n" +
-	"\x03img\x18\x03 \x01(\tR\x03img2\x8b\x01\n" +
+	"\x13GetLastMovieRequest\"]\n" +
+	"\x05Movie\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x12\n" +
+	"\x04year\x18\x03 \x01(\x05R\x04year\x12\x1a\n" +
+	"\bdirector\x18\x04 \x01(\tR\bdirector2\x8b\x01\n" +
 	"\fMovieService\x12A\n" +
 	"\n" +
 	"LoadMovies\x12\x18.movie.LoadMoviesRequest\x1a\x19.movie.LoadMoviesResponse\x128\n" +

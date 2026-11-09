@@ -7,6 +7,8 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -24,7 +26,51 @@ import (
 	"mygo/movie"
 
 	_ "mygo/docs"
+	"mygo/internal/repository"
+	"mygo/internal/syncer"
+	"mygo/migrations"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 )
+
+func initDB(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("parse dsn: %w", err)
+	}
+
+	cfg.MaxConns = 10
+	cfg.MaxConnIdleTime = 5 * time.Minute
+
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create pool: %w", err)
+	}
+
+	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := pool.Ping(pingCtx); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("ping db: %w", err)
+	}
+
+	goose.SetBaseFS(migrations.FS)
+	if err := goose.SetDialect("postgres"); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("set dialect: %w", err)
+	}
+	sqlDB := stdlib.OpenDBFromPool(pool)
+	defer sqlDB.Close()
+
+	if err := goose.Up(sqlDB, "."); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
+
+	return pool, nil
+}
 
 func main() {
 	baseURL := os.Getenv("MOVIE_BASE_URL")
@@ -37,8 +83,31 @@ func main() {
 		httpAddr = ":8080"
 	}
 
-	client := adapter.NewMovieClient(baseURL)      // adapter → domain
-	uc := usecase.NewMovieUseCase(client)          // usecase → MovieProvider (интерфейс)
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		log.Fatal("DATABASE_URL is required")
+	}
+
+	ctx := context.Background()
+
+	pool, err := initDB(ctx, dsn)
+	if err != nil {
+		log.Fatalf("init db: %v", err)
+	}
+	defer pool.Close()
+
+	log.Printf("db connected, max conns: %d", pool.Stat().MaxConns())
+
+	client := adapter.NewMovieClient(baseURL)
+	repo := repository.NewMoviesRepository(pool)
+
+	syncCtx, syncCancel := context.WithTimeout(ctx, 10*time.Minute)
+	if err := syncer.Run(syncCtx, client, repo); err != nil {
+		log.Printf("warning: sync failed: %v", err)
+	}
+	syncCancel()
+
+	uc := usecase.NewMovieUseCase(repo)            // usecase → MovieProvider (интерфейс)
 	httpHandler := httphandler.NewMovieHandler(uc) // handler/http → MovieUseCase (интерфейс)
 	grpcServer := grpchandler.NewMovieServer(uc)   // handler/grpc → MovieUseCase (интерфейс)
 

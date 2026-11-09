@@ -1,17 +1,28 @@
 basePath: /
 definitions:
-  main.FailedID:
+  domain.Movie:
+    properties:
+      director:
+        type: string
+      id:
+        type: integer
+      title:
+        type: string
+      year:
+        type: integer
+    type: object
+  usecase.FailedID:
     properties:
       id:
         type: integer
       reason:
         type: string
     type: object
-  main.LoadResult:
+  usecase.LoadResult:
     properties:
       failed_ids:
         items:
-          $ref: '#/definitions/main.FailedID'
+          $ref: '#/definitions/usecase.FailedID'
         type: array
       missing_ids:
         items:
@@ -19,17 +30,8 @@ definitions:
         type: array
       movies:
         items:
-          $ref: '#/definitions/main.Movie'
+          $ref: '#/definitions/domain.Movie'
         type: array
-    type: object
-  main.Movie:
-    properties:
-      img:
-        type: string
-      num:
-        type: integer
-      title:
-        type: string
     type: object
 host: localhost:8080
 info:
@@ -50,7 +52,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.Movie'
+            $ref: '#/definitions/domain.Movie'
         "404":
           description: Фильмов на стенде нет
           schema:
@@ -95,7 +97,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.LoadResult'
+            $ref: '#/definitions/usecase.LoadResult'
         "400":
           description: Неверные параметры from/to
           schema:
