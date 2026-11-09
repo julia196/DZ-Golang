@@ -24,11 +24,16 @@ func NewMovieClient(baseURL string) *MovieClient {
 	}
 }
 
-// movieDTO — внешний JSON стенда.
+// movieDTO — внешний JSON стенда
 type movieDTO struct {
-	Num   int    `json:"id"`
-	Title string `json:"title"`
-	Img   string `json:"img"`
+	Num         int      `json:"id"`
+	Title       string   `json:"title"`
+	Year        int      `json:"year"`
+	Director    string   `json:"director"`
+	Description string   `json:"description"`
+	Actors      []string `json:"actors"`
+	Genres      []string `json:"genres"`
+	Img         string   `json:"img"`
 }
 
 // GetMovie запрашивает фильм по id и возвращает его в виде domain.Movie.
@@ -59,8 +64,12 @@ func (c *MovieClient) GetMovie(ctx context.Context, id int) (domain.Movie, error
 	}
 
 	return domain.Movie{
-		ID:    dto.Num,
-		Title: dto.Title,
-		//Img:   dto.Img,
+		ID:          dto.Num,
+		Title:       dto.Title,
+		Year:        dto.Year,
+		Director:    dto.Director,
+		Description: dto.Description,
+		Actors:      dto.Actors,
+		Genres:      dto.Genres,
 	}, nil
 }
