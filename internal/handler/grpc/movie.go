@@ -51,7 +51,7 @@ func (s *MovieServer) LoadMovies(ctx context.Context, req *movie.LoadMoviesReque
 		resp.Movies = append(resp.Movies, &movie.Movie{
 			Num:   int32(m.ID),
 			Title: m.Title,
-			Img:   m.Img,
+			//Img:   m.Img,
 		})
 	}
 
@@ -89,6 +89,6 @@ func (s *MovieServer) GetLastMovie(
 	return &movie.Movie{
 		Num:   int32(m.ID),
 		Title: m.Title,
-		Img:   m.Img,
+		//Img:   m.Img,
 	}, nil
 }

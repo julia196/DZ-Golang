@@ -61,6 +61,6 @@ func (c *MovieClient) GetMovie(ctx context.Context, id int) (domain.Movie, error
 	return domain.Movie{
 		ID:    dto.Num,
 		Title: dto.Title,
-		Img:   dto.Img,
+		//Img:   dto.Img,
 	}, nil
 }
