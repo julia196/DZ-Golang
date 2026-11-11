@@ -49,9 +49,10 @@ func (s *MovieServer) LoadMovies(ctx context.Context, req *movie.LoadMoviesReque
 
 	for _, m := range result.Movies {
 		resp.Movies = append(resp.Movies, &movie.Movie{
-			Num:   int32(m.ID),
-			Title: m.Title,
-			//Img:   m.Img,
+			Id:       int32(m.ID),
+			Title:    m.Title,
+			Year:     int32(m.Year),
+			Director: m.Director,
 		})
 	}
 
@@ -87,8 +88,9 @@ func (s *MovieServer) GetLastMovie(
 	}
 
 	return &movie.Movie{
-		Num:   int32(m.ID),
-		Title: m.Title,
-		//Img:   m.Img,
+		Id:       int32(m.ID),
+		Title:    m.Title,
+		Year:     int32(m.Year),
+		Director: m.Director,
 	}, nil
 }

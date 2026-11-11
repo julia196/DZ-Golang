@@ -32,7 +32,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/main.Movie"
+                            "$ref": "#/definitions/domain.Movie"
                         }
                     },
                     "404": {
@@ -98,7 +98,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/main.LoadResult"
+                            "$ref": "#/definitions/usecase.LoadResult"
                         }
                     },
                     "400": {
@@ -133,7 +133,24 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "main.FailedID": {
+        "domain.Movie": {
+            "type": "object",
+            "properties": {
+                "director": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "year": {
+                    "type": "integer"
+                }
+            }
+        },
+        "usecase.FailedID": {
             "type": "object",
             "properties": {
                 "id": {
@@ -144,13 +161,13 @@ const docTemplate = `{
                 }
             }
         },
-        "main.LoadResult": {
+        "usecase.LoadResult": {
             "type": "object",
             "properties": {
                 "failed_ids": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/main.FailedID"
+                        "$ref": "#/definitions/usecase.FailedID"
                     }
                 },
                 "missing_ids": {
@@ -162,22 +179,8 @@ const docTemplate = `{
                 "movies": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/main.Movie"
+                        "$ref": "#/definitions/domain.Movie"
                     }
-                }
-            }
-        },
-        "main.Movie": {
-            "type": "object",
-            "properties": {
-                "img": {
-                    "type": "string"
-                },
-                "num": {
-                    "type": "integer"
-                },
-                "title": {
-                    "type": "string"
                 }
             }
         }

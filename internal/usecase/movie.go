@@ -2,16 +2,17 @@ package usecase
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
 	"mygo/internal/domain"
+	"mygo/internal/repository"
 )
 
+// MovieProvider — источник фильмов со стенда.
 type MovieProvider interface {
 	GetMovie(ctx context.Context, id int) (domain.Movie, error)
 }
 
+// MovieUseCase — бизнес-логика над локальной БД.
 type MovieUseCase interface {
 	LoadMovies(ctx context.Context, from, to int) (*LoadResult, error)
 	GetLastMovie(ctx context.Context) (domain.Movie, error)
@@ -30,71 +31,49 @@ type FailedID struct {
 	Reason string `json:"reason"`
 }
 
-// movieUseCase — приватная реализация MovieUseCase.
 type movieUseCase struct {
-	provider MovieProvider
+	repo repository.MoviesRepository
 }
 
-// NewMovieUseCase создаёт usecase с заданным источником фильмов.
-func NewMovieUseCase(provider MovieProvider) MovieUseCase {
-	return &movieUseCase{provider: provider}
+// NewMovieUseCase создаёт usecase поверх репозитория БД.
+func NewMovieUseCase(repo repository.MoviesRepository) MovieUseCase {
+	return &movieUseCase{repo: repo}
 }
 
-// LoadMovies загружает фильмы в диапазоне [from; to].
+// LoadMovies возвращает фильмы в диапазоне [from; to] из БД.
+// id, которых нет в БД, попадают в MissingIDs.
 func (u *movieUseCase) LoadMovies(ctx context.Context, from, to int) (*LoadResult, error) {
 	if from < 1 || to < 1 || from > to {
 		return nil, domain.ErrInvalidRange
 	}
-	var result LoadResult
+
+	found, err := u.repo.GetRange(ctx, from, to)
+	if err != nil {
+		return nil, err
+	}
+
+	have := make(map[int]struct{}, len(found))
+	for _, m := range found {
+		have[m.ID] = struct{}{}
+	}
+
+	result := LoadResult{
+		Movies:     make([]domain.Movie, 0, len(found)),
+		MissingIDs: make([]int, 0),
+	}
 
 	for id := from; id <= to; id++ {
-		m, err := u.provider.GetMovie(ctx, id)
-		if err != nil {
-			if errors.Is(err, domain.ErrMovieNotFound) {
-				result.MissingIDs = append(result.MissingIDs, id)
-				continue
-			}
-			result.FailedIDs = append(result.FailedIDs, FailedID{
-				ID:     id,
-				Reason: err.Error(),
-			})
+		if _, ok := have[id]; ok {
 			continue
 		}
-		result.Movies = append(result.Movies, m)
+		result.MissingIDs = append(result.MissingIDs, id)
 	}
+	result.Movies = found
+
 	return &result, nil
 }
 
-// GetLastMovie находит последний доступный фильм на стенде
+// GetLastMovie возвращает фильм с максимальным id из БД.
 func (u *movieUseCase) GetLastMovie(ctx context.Context) (domain.Movie, error) {
-	lo, hi := 1, 1
-
-	for {
-		_, err := u.provider.GetMovie(ctx, hi)
-		if errors.Is(err, domain.ErrMovieNotFound) {
-			break
-		}
-		if err != nil {
-			return domain.Movie{}, fmt.Errorf("id=%d: %w", hi, err)
-		}
-		lo = hi
-		hi *= 2
-		if hi > 1<<30 {
-			return domain.Movie{}, fmt.Errorf("last movie not found: probe limit exceeded")
-		}
-	}
-
-	for lo+1 < hi {
-		mid := (lo + hi) / 2
-		_, err := u.provider.GetMovie(ctx, mid)
-		switch {
-		case errors.Is(err, domain.ErrMovieNotFound):
-			hi = mid
-		case err != nil:
-			return domain.Movie{}, fmt.Errorf("id=%d: %w", mid, err)
-		default:
-			lo = mid
-		}
-	}
-	return u.provider.GetMovie(ctx, lo)
+	return u.repo.GetMax(ctx)
 }
