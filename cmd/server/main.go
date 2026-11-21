@@ -64,8 +64,8 @@ func initDB(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 			pingErr = err
 		}
 
-		if i < 14 {
-			log.Printf("waiting for db (attempt %d/15): %v", i+1, pingErr)
+		if i < 59 {
+			log.Printf("waiting for db (attempt %d/60): %v", i+1, pingErr)
 			time.Sleep(1 * time.Second)
 		}
 	}
@@ -116,11 +116,12 @@ func main() {
 	// 1. Подключение к БД + миграции
 	pool, err := initDB(ctx, dsn)
 	if err != nil {
-		log.Fatalf("init db: %v", err)
+		// ВАЖНО: Мы не делаем log.Fatalf, а просто пишем предупреждение!
+		log.Printf("WARNING: init db failed: %v. Starting server in degraded mode.", err)
+	} else {
+		defer pool.Close()
+		log.Printf("db connected, max conns: %d", pool.Stat().MaxConns())
 	}
-	defer pool.Close()
-
-	log.Printf("db connected, max conns: %d", pool.Stat().MaxConns())
 
 	// 2. Подключение к Redis
 	rdb, err := cache.NewRedisClient(ctx, redisAddr)
@@ -128,31 +129,33 @@ func main() {
 		log.Fatalf("init redis: %v", err)
 	}
 	defer rdb.Close()
-
 	log.Printf("redis connected at %s", redisAddr)
 
 	// 3. Адаптер стенда и репозиторий
 	client := adapter.NewMovieClient(baseURL)
 	repo := repository.NewMoviesRepository(pool)
 
-	// 4. Синхронизация со стендом
-	syncCtx, syncCancel := context.WithTimeout(ctx, 10*time.Minute)
-	if err := syncer.Run(syncCtx, client, repo); err != nil {
-		log.Printf("warning: sync failed: %v", err)
-	}
-	syncCancel()
+	// 4. Синхронизация и индекс (делаем только если БД доступна)
+	if pool != nil {
+		syncCtx, syncCancel := context.WithTimeout(ctx, 10*time.Minute)
+		if err := syncer.Run(syncCtx, client, repo); err != nil {
+			log.Printf("warning: sync failed: %v", err)
+		}
+		syncCancel()
 
-	allMovies, err := repo.GetAll(ctx)
-	if err != nil {
-		log.Fatalf("failed to get all movies for index: %v", err)
+		allMovies, err := repo.GetAll(ctx)
+		if err != nil {
+			log.Printf("failed to get all movies for index: %v", err)
+		} else {
+			indexCtx, indexCancel := context.WithTimeout(ctx, 5*time.Minute)
+			if err := index.BuildIndex(indexCtx, rdb, allMovies); err != nil {
+				log.Printf("failed to build index: %v", err)
+			}
+			indexCancel()
+		}
+	} else {
+		log.Printf("skipping sync and index: database is unavailable")
 	}
-
-	// Даём 5 минут на построение индекса
-	indexCtx, indexCancel := context.WithTimeout(ctx, 5*time.Minute)
-	if err := index.BuildIndex(indexCtx, rdb, allMovies); err != nil {
-		log.Fatalf("failed to build index: %v", err)
-	}
-	indexCancel()
 
 	// 5. Usecase
 	uc := usecase.NewMovieUseCase(repo, rdb)
