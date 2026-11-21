@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 
 	"encoding/json"
 	"mygo/internal/cache"
@@ -98,6 +99,10 @@ func (u *movieUseCase) LoadMovies(ctx context.Context, from, to int) (*LoadResul
 func (u *movieUseCase) GetLastMovie(ctx context.Context) (domain.Movie, error) {
 	m, err := u.repo.GetMax(ctx)
 	if err != nil {
+		if errors.Is(err, domain.ErrMovieNotFound) {
+			return domain.Movie{}, domain.ErrMovieNotFound
+		}
+
 		val, rerr := u.rdb.Get(ctx, "cache:movies:all").Result()
 		if rerr == nil {
 			var allMovies []domain.Movie
