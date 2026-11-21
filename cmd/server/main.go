@@ -159,9 +159,6 @@ func main() {
 	httpHandler := httphandler.NewMovieHandler(uc)
 	grpcServer := grpchandler.NewMovieServer(uc)
 
-	// Заглушка для rdb, чтобы компилятор не ругался (мы уберем её на Шаге 2, когда начнем использовать Redis)
-	_ = rdb
-
 	grpcAddr := os.Getenv("GRPC_ADDR")
 	if grpcAddr == "" {
 		grpcAddr = ":9090"
