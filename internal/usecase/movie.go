@@ -58,20 +58,27 @@ func (u *movieUseCase) LoadMovies(ctx context.Context, from, to int) (*LoadResul
 
 	found, err := u.repo.GetRange(ctx, from, to)
 	if err != nil {
-		val, rerr := u.rdb.Get(ctx, "cache:movies:all").Result()
-		if rerr == nil {
-			var allMovies []domain.Movie
-			if json.Unmarshal([]byte(val), &allMovies) == nil {
-				var filtered []domain.Movie
-				for _, m := range allMovies {
-					if m.ID >= from && m.ID <= to {
-						filtered = append(filtered, m)
-					}
-				}
-				return &LoadResult{Movies: filtered, MissingIDs: []int{}}, nil
+		if u.repo.Ping(ctx) == nil {
+			found, err = u.repo.GetRange(ctx, from, to)
+			if err != nil {
+				return nil, err
 			}
+		} else {
+			val, rerr := u.rdb.Get(ctx, "cache:movies:all").Result()
+			if rerr == nil {
+				var allMovies []domain.Movie
+				if json.Unmarshal([]byte(val), &allMovies) == nil {
+					var filtered []domain.Movie
+					for _, m := range allMovies {
+						if m.ID >= from && m.ID <= to {
+							filtered = append(filtered, m)
+						}
+					}
+					return &LoadResult{Movies: filtered, MissingIDs: []int{}}, nil
+				}
+			}
+			return &LoadResult{Movies: []domain.Movie{}, MissingIDs: []int{}}, nil
 		}
-		return &LoadResult{Movies: []domain.Movie{}, MissingIDs: []int{}}, nil
 	}
 
 	have := make(map[int]struct{}, len(found))
@@ -101,6 +108,14 @@ func (u *movieUseCase) GetLastMovie(ctx context.Context) (domain.Movie, error) {
 	if err != nil {
 		if errors.Is(err, domain.ErrMovieNotFound) {
 			return domain.Movie{}, domain.ErrMovieNotFound
+		}
+
+		if u.repo.Ping(ctx) == nil {
+			m, err = u.repo.GetMax(ctx)
+			if err != nil {
+				return domain.Movie{}, err
+			}
+			return m, nil
 		}
 
 		val, rerr := u.rdb.Get(ctx, "cache:movies:all").Result()

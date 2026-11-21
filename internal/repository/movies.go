@@ -19,6 +19,7 @@ type MoviesRepository interface {
 	GetMax(ctx context.Context) (domain.Movie, error)
 	GetAll(ctx context.Context) ([]domain.Movie, error)
 	GetByIDs(ctx context.Context, ids []int) ([]domain.Movie, error)
+	Ping(ctx context.Context) error
 }
 
 type moviesRepo struct {
@@ -195,4 +196,11 @@ func (r *moviesRepo) GetByIDs(ctx context.Context, ids []int) ([]domain.Movie, e
 		out = append(out, m)
 	}
 	return out, rows.Err()
+}
+
+func (r *moviesRepo) Ping(ctx context.Context) error {
+	if r.pool == nil {
+		return fmt.Errorf("database is unavailable")
+	}
+	return r.pool.Ping(ctx)
 }
