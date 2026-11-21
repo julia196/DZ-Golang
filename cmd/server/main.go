@@ -35,60 +35,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
+	"github.com/redis/go-redis/v9"
 )
-
-func initDB(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
-	cfg, err := pgxpool.ParseConfig(dsn)
-	if err != nil {
-		return nil, fmt.Errorf("parse dsn: %w", err)
-	}
-
-	cfg.MaxConns = 10
-	cfg.MaxConnIdleTime = 5 * time.Minute
-
-	var pool *pgxpool.Pool
-	var pingErr error
-
-	for i := 0; i < 5; i++ {
-		pool, err = pgxpool.NewWithConfig(ctx, cfg)
-		if err == nil {
-			pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-			pingErr = pool.Ping(pingCtx)
-			cancel()
-
-			if pingErr == nil {
-				break
-			}
-			pool.Close()
-		} else {
-			pingErr = err
-		}
-
-		if i < 4 {
-			log.Printf("waiting for db (attempt %d/60): %v", i+1, pingErr)
-			time.Sleep(1 * time.Second)
-		}
-	}
-
-	if pingErr != nil {
-		return nil, fmt.Errorf("ping db after retries: %w", pingErr)
-	}
-
-	goose.SetBaseFS(migrations.FS)
-	if err := goose.SetDialect("postgres"); err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("set dialect: %w", err)
-	}
-	sqlDB := stdlib.OpenDBFromPool(pool)
-	defer sqlDB.Close()
-
-	if err := goose.Up(sqlDB, "."); err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("migrate: %w", err)
-	}
-
-	return pool, nil
-}
 
 func main() {
 	baseURL := os.Getenv("MOVIE_BASE_URL")
@@ -108,59 +56,46 @@ func main() {
 
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
-		redisAddr = "localhost:6379" // Дефолт для локальной разработки
+		redisAddr = "localhost:6379"
 	}
 
 	ctx := context.Background()
 
-	// 1. Подключение к БД + миграции
-	pool, err := initDB(ctx, dsn)
+	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
-		// ВАЖНО: Мы не делаем log.Fatalf, а просто пишем предупреждение!
-		log.Printf("WARNING: init db failed: %v. Starting server in degraded mode.", err)
-	} else {
-		defer pool.Close()
-		log.Printf("db connected, max conns: %d", pool.Stat().MaxConns())
+		log.Fatalf("parse dsn: %v", err)
 	}
+	cfg.MaxConns = 10
+	cfg.MaxConnIdleTime = 5 * time.Minute
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		log.Fatalf("failed to create pool: %v", err)
+	}
+	defer pool.Close()
 
-	// 2. Подключение к Redis
 	rdb, err := cache.NewRedisClient(ctx, redisAddr)
 	if err != nil {
 		log.Fatalf("init redis: %v", err)
 	}
 	defer rdb.Close()
-	log.Printf("redis connected at %s", redisAddr)
 
-	// 3. Адаптер стенда и репозиторий
 	client := adapter.NewMovieClient(baseURL)
 	repo := repository.NewMoviesRepository(pool)
-
-	// 4. Синхронизация и индекс (делаем только если БД доступна)
-	if pool != nil {
-		syncCtx, syncCancel := context.WithTimeout(ctx, 10*time.Minute)
-		if err := syncer.Run(syncCtx, client, repo); err != nil {
-			log.Printf("warning: sync failed: %v", err)
-		}
-		syncCancel()
-
-		allMovies, err := repo.GetAll(ctx)
-		if err != nil {
-			log.Printf("failed to get all movies for index: %v", err)
-		} else {
-			indexCtx, indexCancel := context.WithTimeout(ctx, 5*time.Minute)
-			if err := index.BuildIndex(indexCtx, rdb, allMovies); err != nil {
-				log.Printf("failed to build index: %v", err)
-			}
-			indexCancel()
-		}
-	} else {
-		log.Printf("skipping sync and index: database is unavailable")
-	}
-
-	// 5. Usecase
 	uc := usecase.NewMovieUseCase(repo, rdb)
 	httpHandler := httphandler.NewMovieHandler(uc)
 	grpcServer := grpchandler.NewMovieServer(uc)
+
+	go func() {
+		for {
+			err := doInitAndSync(ctx, pool, client, repo, rdb)
+			if err == nil {
+				log.Println("background init and sync successful")
+				break // Успех! Выходим из цикла
+			}
+			log.Printf("background init failed: %v, retrying in 5s", err)
+			time.Sleep(5 * time.Second)
+		}
+	}()
 
 	grpcAddr := os.Getenv("GRPC_ADDR")
 	if grpcAddr == "" {
@@ -186,6 +121,49 @@ func main() {
 	if err := svr.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+// doInitAndSync выполняет пинг БД, миграции, синхронизацию и построение индекса
+func doInitAndSync(ctx context.Context, pool *pgxpool.Pool, client *adapter.MovieClient, repo repository.MoviesRepository, rdb *redis.Client) error {
+	// 1. Проверка подключения
+	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if err := pool.Ping(pingCtx); err != nil {
+		return fmt.Errorf("ping db: %w", err)
+	}
+
+	// 2. Миграции
+	goose.SetBaseFS(migrations.FS)
+	if err := goose.SetDialect("postgres"); err != nil {
+		return fmt.Errorf("set dialect: %w", err)
+	}
+	sqlDB := stdlib.OpenDBFromPool(pool)
+	defer sqlDB.Close()
+	if err := goose.Up(sqlDB, "."); err != nil {
+		return fmt.Errorf("migrate: %w", err)
+	}
+
+	// 3. Синхронизация
+	syncCtx, syncCancel := context.WithTimeout(ctx, 10*time.Minute)
+	if err := syncer.Run(syncCtx, client, repo); err != nil {
+		syncCancel()
+		return fmt.Errorf("sync: %w", err)
+	}
+	syncCancel()
+
+	// 4. Построение индекса
+	allMovies, err := repo.GetAll(ctx)
+	if err != nil {
+		return fmt.Errorf("get all movies for index: %w", err)
+	}
+	indexCtx, indexCancel := context.WithTimeout(ctx, 5*time.Minute)
+	if err := index.BuildIndex(indexCtx, rdb, allMovies); err != nil {
+		indexCancel()
+		return fmt.Errorf("build index: %w", err)
+	}
+	indexCancel()
+
+	return nil
 }
 
 // startGRPCServer поднимает gRPC-сервер.
