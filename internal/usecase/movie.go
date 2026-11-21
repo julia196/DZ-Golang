@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 
+	"encoding/json"
 	"mygo/internal/cache"
 	"mygo/internal/domain"
 	"mygo/internal/repository"
@@ -56,6 +57,19 @@ func (u *movieUseCase) LoadMovies(ctx context.Context, from, to int) (*LoadResul
 
 	found, err := u.repo.GetRange(ctx, from, to)
 	if err != nil {
+		val, rerr := u.rdb.Get(ctx, "cache:movies:all").Result()
+		if rerr == nil {
+			var allMovies []domain.Movie
+			if json.Unmarshal([]byte(val), &allMovies) == nil {
+				var filtered []domain.Movie
+				for _, m := range allMovies {
+					if m.ID >= from && m.ID <= to {
+						filtered = append(filtered, m)
+					}
+				}
+				return &LoadResult{Movies: filtered, MissingIDs: []int{}}, nil
+			}
+		}
 		return &LoadResult{Movies: []domain.Movie{}, MissingIDs: []int{}}, nil
 	}
 
@@ -84,6 +98,19 @@ func (u *movieUseCase) LoadMovies(ctx context.Context, from, to int) (*LoadResul
 func (u *movieUseCase) GetLastMovie(ctx context.Context) (domain.Movie, error) {
 	m, err := u.repo.GetMax(ctx)
 	if err != nil {
+		val, rerr := u.rdb.Get(ctx, "cache:movies:all").Result()
+		if rerr == nil {
+			var allMovies []domain.Movie
+			if json.Unmarshal([]byte(val), &allMovies) == nil && len(allMovies) > 0 {
+				max := allMovies[0]
+				for _, m := range allMovies {
+					if m.ID > max.ID {
+						max = m
+					}
+				}
+				return max, nil
+			}
+		}
 		return domain.Movie{}, domain.ErrMovieNotFound
 	}
 	return m, nil

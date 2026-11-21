@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -32,6 +33,11 @@ func BuildIndex(ctx context.Context, rdb *redis.Client, movies []domain.Movie) e
 		}
 	}
 
+	data, err := json.Marshal(movies)
+	if err == nil {
+		pipe.Set(ctx, "cache:movies:all", data, 0)
+	}
+
 	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("exec pipeline: %w", err)
 	}
@@ -55,17 +61,14 @@ func clearCache(ctx context.Context, rdb *redis.Client) error {
 		if err != nil {
 			return err
 		}
-
 		if len(keys) > 0 {
-			if err := rdb.Del(ctx, keys...).Err(); err != nil {
-				return err
-			}
+			rdb.Del(ctx, keys...)
 		}
-
 		cursor = nextCursor
 		if cursor == 0 {
 			break
 		}
 	}
+	rdb.Del(ctx, "cache:movies:all")
 	return nil
 }
