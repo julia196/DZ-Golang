@@ -2,12 +2,18 @@ package usecase
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
+	"mygo/internal/cache"
 	"mygo/internal/domain"
+	"mygo/internal/repository"
+	"strings"
+	"unicode"
+
+	"github.com/redis/go-redis/v9"
 )
 
+// MovieProvider — источник фильмов со стенда.
+// Оставляем этот интерфейс, так как его использует syncer для синхронизации.
 type MovieProvider interface {
 	GetMovie(ctx context.Context, id int) (domain.Movie, error)
 }
@@ -15,6 +21,7 @@ type MovieProvider interface {
 type MovieUseCase interface {
 	LoadMovies(ctx context.Context, from, to int) (*LoadResult, error)
 	GetLastMovie(ctx context.Context) (domain.Movie, error)
+	Search(ctx context.Context, query string) ([]domain.Movie, error)
 }
 
 // LoadResult — результат загрузки диапазона с частичными ошибками.
@@ -32,69 +39,79 @@ type FailedID struct {
 
 // movieUseCase — приватная реализация MovieUseCase.
 type movieUseCase struct {
-	provider MovieProvider
+	repo repository.MoviesRepository
+	rdb  *redis.Client
 }
 
-// NewMovieUseCase создаёт usecase с заданным источником фильмов.
-func NewMovieUseCase(provider MovieProvider) MovieUseCase {
-	return &movieUseCase{provider: provider}
+// NewMovieUseCase создаёт usecase с заданным репозиторием.
+func NewMovieUseCase(repo repository.MoviesRepository, rdb *redis.Client) MovieUseCase {
+	return &movieUseCase{repo: repo, rdb: rdb}
 }
 
-// LoadMovies загружает фильмы в диапазоне [from; to].
+// LoadMovies загружает фильмы в диапазоне [from; to] из БД.
 func (u *movieUseCase) LoadMovies(ctx context.Context, from, to int) (*LoadResult, error) {
 	if from < 1 || to < 1 || from > to {
 		return nil, domain.ErrInvalidRange
 	}
-	var result LoadResult
 
+	found, err := u.repo.GetRange(ctx, from, to)
+	if err != nil {
+		return nil, err
+	}
+
+	have := make(map[int]struct{}, len(found))
+	for _, m := range found {
+		have[m.ID] = struct{}{}
+	}
+
+	result := LoadResult{
+		Movies:     make([]domain.Movie, 0, len(found)),
+		MissingIDs: make([]int, 0),
+	}
+
+	// Заполняем missing_ids теми id, которых нет в БД
 	for id := from; id <= to; id++ {
-		m, err := u.provider.GetMovie(ctx, id)
-		if err != nil {
-			if errors.Is(err, domain.ErrMovieNotFound) {
-				result.MissingIDs = append(result.MissingIDs, id)
-				continue
-			}
-			result.FailedIDs = append(result.FailedIDs, FailedID{
-				ID:     id,
-				Reason: err.Error(),
-			})
+		if _, ok := have[id]; ok {
 			continue
 		}
-		result.Movies = append(result.Movies, m)
+		result.MissingIDs = append(result.MissingIDs, id)
 	}
+	result.Movies = found
+
 	return &result, nil
 }
 
-// GetLastMovie находит последний доступный фильм на стенде
+// GetLastMovie находит последний доступный фильм в БД.
 func (u *movieUseCase) GetLastMovie(ctx context.Context) (domain.Movie, error) {
-	lo, hi := 1, 1
+	return u.repo.GetMax(ctx)
+}
 
-	for {
-		_, err := u.provider.GetMovie(ctx, hi)
-		if errors.Is(err, domain.ErrMovieNotFound) {
-			break
-		}
-		if err != nil {
-			return domain.Movie{}, fmt.Errorf("id=%d: %w", hi, err)
-		}
-		lo = hi
-		hi *= 2
-		if hi > 1<<30 {
-			return domain.Movie{}, fmt.Errorf("last movie not found: probe limit exceeded")
-		}
+func (u *movieUseCase) Search(ctx context.Context, query string) ([]domain.Movie, error) {
+	if movies, ok := cache.GetCachedSearch(ctx, u.rdb, query); ok {
+		return movies, nil
 	}
 
-	for lo+1 < hi {
-		mid := (lo + hi) / 2
-		_, err := u.provider.GetMovie(ctx, mid)
-		switch {
-		case errors.Is(err, domain.ErrMovieNotFound):
-			hi = mid
-		case err != nil:
-			return domain.Movie{}, fmt.Errorf("id=%d: %w", mid, err)
-		default:
-			lo = mid
-		}
+	words := strings.FieldsFunc(strings.ToLower(query), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+
+	ids, err := cache.SearchIDs(ctx, u.rdb, words)
+	if err != nil {
+		return nil, err
 	}
-	return u.provider.GetMovie(ctx, lo)
+
+	if len(ids) == 0 {
+		empty := make([]domain.Movie, 0)
+		cache.SetCachedSearch(ctx, u.rdb, query, empty) // Кэшируем пустой ответ
+		return empty, nil
+	}
+
+	movies, err := u.repo.GetByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	cache.SetCachedSearch(ctx, u.rdb, query, movies)
+
+	return movies, nil
 }

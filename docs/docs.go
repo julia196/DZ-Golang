@@ -32,7 +32,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/main.Movie"
+                            "$ref": "#/definitions/domain.Movie"
                         }
                     },
                     "404": {
@@ -98,7 +98,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/main.LoadResult"
+                            "$ref": "#/definitions/usecase.LoadResult"
                         }
                     },
                     "400": {
@@ -130,10 +130,92 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/search": {
+            "get": {
+                "description": "Ищет фильмы по словам в названии и режиссере, используя Redis.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "movies"
+                ],
+                "summary": "Поиск фильмов",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Поисковый запрос",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domain.Movie"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Неверный запрос",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
-        "main.FailedID": {
+        "domain.Movie": {
+            "type": "object",
+            "properties": {
+                "actors": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "director": {
+                    "type": "string"
+                },
+                "genres": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "year": {
+                    "type": "integer"
+                }
+            }
+        },
+        "usecase.FailedID": {
             "type": "object",
             "properties": {
                 "id": {
@@ -144,13 +226,13 @@ const docTemplate = `{
                 }
             }
         },
-        "main.LoadResult": {
+        "usecase.LoadResult": {
             "type": "object",
             "properties": {
                 "failed_ids": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/main.FailedID"
+                        "$ref": "#/definitions/usecase.FailedID"
                     }
                 },
                 "missing_ids": {
@@ -162,22 +244,8 @@ const docTemplate = `{
                 "movies": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/main.Movie"
+                        "$ref": "#/definitions/domain.Movie"
                     }
-                }
-            }
-        },
-        "main.Movie": {
-            "type": "object",
-            "properties": {
-                "img": {
-                    "type": "string"
-                },
-                "num": {
-                    "type": "integer"
-                },
-                "title": {
-                    "type": "string"
                 }
             }
         }
