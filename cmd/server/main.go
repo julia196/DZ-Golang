@@ -46,16 +46,32 @@ func initDB(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	cfg.MaxConns = 10
 	cfg.MaxConnIdleTime = 5 * time.Minute
 
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("create pool: %w", err)
+	var pool *pgxpool.Pool
+	var pingErr error
+
+	for i := 0; i < 15; i++ {
+		pool, err = pgxpool.NewWithConfig(ctx, cfg)
+		if err == nil {
+			pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			pingErr = pool.Ping(pingCtx)
+			cancel()
+
+			if pingErr == nil {
+				break
+			}
+			pool.Close()
+		} else {
+			pingErr = err
+		}
+
+		if i < 14 {
+			log.Printf("waiting for db (attempt %d/15): %v", i+1, pingErr)
+			time.Sleep(1 * time.Second)
+		}
 	}
 
-	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	if err := pool.Ping(pingCtx); err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("ping db: %w", err)
+	if pingErr != nil {
+		return nil, fmt.Errorf("ping db after retries: %w", pingErr)
 	}
 
 	goose.SetBaseFS(migrations.FS)
@@ -146,7 +162,11 @@ func main() {
 	// Заглушка для rdb, чтобы компилятор не ругался (мы уберем её на Шаге 2, когда начнем использовать Redis)
 	_ = rdb
 
-	go startGRPCServer(grpcServer)
+	grpcAddr := os.Getenv("GRPC_ADDR")
+	if grpcAddr == "" {
+		grpcAddr = ":9090"
+	}
+	go startGRPCServer(grpcServer, grpcAddr)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/load-movies", httpHandler.LoadMovies)
@@ -168,16 +188,17 @@ func main() {
 	}
 }
 
-// startGRPCServer поднимает gRPC-сервер на :9090.
-func startGRPCServer(srv movie.MovieServiceServer) {
-	lis, err := net.Listen("tcp", ":9090")
+// startGRPCServer поднимает gRPC-сервер.
+func startGRPCServer(srv movie.MovieServiceServer, addr string) {
+	lis, err := net.Listen("tcp", addr)
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		log.Printf("failed to listen gRPC on %s: %v", addr, err)
+		return
 	}
 	s := grpc.NewServer()
 	movie.RegisterMovieServiceServer(s, srv)
-	log.Println("gRPC server listening on :9090")
+	log.Printf("gRPC server listening on %s", addr)
 	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+		log.Printf("failed to serve gRPC: %v", err)
 	}
 }
