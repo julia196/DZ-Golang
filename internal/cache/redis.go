@@ -14,7 +14,7 @@ func NewRedisClient(ctx context.Context, addr string) (*redis.Client, error) {
 	var rdb *redis.Client
 	var err error
 
-	for i := 0; i < 60; i++ {
+	for i := 0; i < 5; i++ {
 		rdb = redis.NewClient(&redis.Options{
 			Addr:         addr,
 			Password:     "",
@@ -34,8 +34,8 @@ func NewRedisClient(ctx context.Context, addr string) (*redis.Client, error) {
 		}
 
 		rdb.Close()
-		if i < 59 {
-			log.Printf("waiting for redis (attempt %d/60): %v", i+1, err)
+		if i < 4 {
+			log.Printf("waiting for redis (attempt %d/5): %v", i+1, err)
 			time.Sleep(1 * time.Second)
 		}
 	}

@@ -31,6 +31,9 @@ func NewMoviesRepository(pool *pgxpool.Pool) MoviesRepository {
 
 // Upsert вставляет фильм или обновляет, если id уже есть.
 func (r *moviesRepo) Upsert(ctx context.Context, m domain.Movie) error {
+	if r.pool == nil {
+		return fmt.Errorf("database is unavailable")
+	}
 	const q = `
 		INSERT INTO movies (id, title, year, director, updated_at)
 		VALUES ($1, $2, $3, $4, now())
@@ -48,6 +51,9 @@ func (r *moviesRepo) Upsert(ctx context.Context, m domain.Movie) error {
 
 // UpsertMany — пачками по 500, чтобы не отправлять гигантский batch.
 func (r *moviesRepo) UpsertMany(ctx context.Context, ms []domain.Movie) error {
+	if r.pool == nil {
+		return fmt.Errorf("database is unavailable")
+	}
 	const chunkSize = 500
 	for start := 0; start < len(ms); start += chunkSize {
 		end := start + chunkSize
@@ -64,6 +70,9 @@ func (r *moviesRepo) UpsertMany(ctx context.Context, ms []domain.Movie) error {
 func (r *moviesRepo) upsertChunk(ctx context.Context, ms []domain.Movie) error {
 	if len(ms) == 0 {
 		return nil
+	}
+	if r.pool == nil {
+		return fmt.Errorf("database is unavailable")
 	}
 	const q = `
 		INSERT INTO movies (id, title, year, director, updated_at)
@@ -90,6 +99,9 @@ func (r *moviesRepo) upsertChunk(ctx context.Context, ms []domain.Movie) error {
 
 // GetRange возвращает фильмы с id в [from; to], сортировка по id.
 func (r *moviesRepo) GetRange(ctx context.Context, from, to int) ([]domain.Movie, error) {
+	if r.pool == nil {
+		return nil, fmt.Errorf("database is unavailable")
+	}
 	const q = `
 		SELECT id, title, year, director
 		FROM movies
@@ -118,6 +130,9 @@ func (r *moviesRepo) GetRange(ctx context.Context, from, to int) ([]domain.Movie
 
 // GetMax возвращает фильм с максимальным id.
 func (r *moviesRepo) GetMax(ctx context.Context) (domain.Movie, error) {
+	if r.pool == nil {
+		return domain.Movie{}, fmt.Errorf("database is unavailable")
+	}
 	const q = `
 		SELECT id, title, year, director
 		FROM movies
@@ -136,6 +151,9 @@ func (r *moviesRepo) GetMax(ctx context.Context) (domain.Movie, error) {
 }
 
 func (r *moviesRepo) GetAll(ctx context.Context) ([]domain.Movie, error) {
+	if r.pool == nil {
+		return nil, fmt.Errorf("database is unavailable")
+	}
 	const q = `SELECT id, title, year, director FROM movies`
 	rows, err := r.pool.Query(ctx, q)
 	if err != nil {
@@ -155,8 +173,11 @@ func (r *moviesRepo) GetAll(ctx context.Context) ([]domain.Movie, error) {
 }
 
 func (r *moviesRepo) GetByIDs(ctx context.Context, ids []int) ([]domain.Movie, error) {
+	if r.pool == nil {
+		return nil, fmt.Errorf("database is unavailable")
+	}
 	if len(ids) == 0 {
-		return []domain.Movie{}, nil // Возвращаем пустой слайс, а не nil
+		return []domain.Movie{}, nil
 	}
 	const q = `SELECT id, title, year, director FROM movies WHERE id = ANY($1)`
 	rows, err := r.pool.Query(ctx, q, ids)

@@ -49,7 +49,7 @@ func initDB(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	var pool *pgxpool.Pool
 	var pingErr error
 
-	for i := 0; i < 60; i++ {
+	for i := 0; i < 5; i++ {
 		pool, err = pgxpool.NewWithConfig(ctx, cfg)
 		if err == nil {
 			pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -64,7 +64,7 @@ func initDB(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 			pingErr = err
 		}
 
-		if i < 59 {
+		if i < 4 {
 			log.Printf("waiting for db (attempt %d/60): %v", i+1, pingErr)
 			time.Sleep(1 * time.Second)
 		}
