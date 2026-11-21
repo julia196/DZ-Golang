@@ -56,6 +56,10 @@ func (u *movieUseCase) LoadMovies(ctx context.Context, from, to int) (*LoadResul
 
 	found, err := u.repo.GetRange(ctx, from, to)
 	if err != nil {
+		// Если база данных недоступна, возвращаем пустой результат, чтобы не падать с 500
+		if err.Error() == "database is unavailable" {
+			return &LoadResult{Movies: []domain.Movie{}, MissingIDs: []int{}}, nil
+		}
 		return nil, err
 	}
 
@@ -69,7 +73,6 @@ func (u *movieUseCase) LoadMovies(ctx context.Context, from, to int) (*LoadResul
 		MissingIDs: make([]int, 0),
 	}
 
-	// Заполняем missing_ids теми id, которых нет в БД
 	for id := from; id <= to; id++ {
 		if _, ok := have[id]; ok {
 			continue
@@ -83,7 +86,14 @@ func (u *movieUseCase) LoadMovies(ctx context.Context, from, to int) (*LoadResul
 
 // GetLastMovie находит последний доступный фильм в БД.
 func (u *movieUseCase) GetLastMovie(ctx context.Context) (domain.Movie, error) {
-	return u.repo.GetMax(ctx)
+	m, err := u.repo.GetMax(ctx)
+	if err != nil {
+		if err.Error() == "database is unavailable" {
+			return domain.Movie{}, domain.ErrMovieNotFound // Возвращаем 404
+		}
+		return domain.Movie{}, err
+	}
+	return m, nil
 }
 
 func (u *movieUseCase) Search(ctx context.Context, query string) ([]domain.Movie, error) {
