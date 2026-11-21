@@ -1,17 +1,38 @@
 basePath: /
 definitions:
-  main.FailedID:
+  domain.Movie:
+    properties:
+      actors:
+        items:
+          type: string
+        type: array
+      description:
+        type: string
+      director:
+        type: string
+      genres:
+        items:
+          type: string
+        type: array
+      id:
+        type: integer
+      title:
+        type: string
+      year:
+        type: integer
+    type: object
+  usecase.FailedID:
     properties:
       id:
         type: integer
       reason:
         type: string
     type: object
-  main.LoadResult:
+  usecase.LoadResult:
     properties:
       failed_ids:
         items:
-          $ref: '#/definitions/main.FailedID'
+          $ref: '#/definitions/usecase.FailedID'
         type: array
       missing_ids:
         items:
@@ -19,17 +40,8 @@ definitions:
         type: array
       movies:
         items:
-          $ref: '#/definitions/main.Movie'
+          $ref: '#/definitions/domain.Movie'
         type: array
-    type: object
-  main.Movie:
-    properties:
-      img:
-        type: string
-      num:
-        type: integer
-      title:
-        type: string
     type: object
 host: localhost:8080
 info:
@@ -50,7 +62,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.Movie'
+            $ref: '#/definitions/domain.Movie'
         "404":
           description: Фильмов на стенде нет
           schema:
@@ -95,7 +107,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.LoadResult'
+            $ref: '#/definitions/usecase.LoadResult'
         "400":
           description: Неверные параметры from/to
           schema:
@@ -115,6 +127,39 @@ paths:
               type: string
             type: object
       summary: Загрузка фильмов
+      tags:
+      - movies
+  /search:
+    get:
+      description: Ищет фильмы по словам в названии и режиссере, используя Redis.
+      parameters:
+      - description: Поисковый запрос
+        in: query
+        name: q
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.Movie'
+            type: array
+        "400":
+          description: Неверный запрос
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Поиск фильмов
       tags:
       - movies
 swagger: "2.0"

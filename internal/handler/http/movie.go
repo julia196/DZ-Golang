@@ -10,6 +10,7 @@ import (
 
 	"mygo/internal/domain"
 	"mygo/internal/usecase"
+	"strings"
 )
 
 // MovieHandler- HTTP-слой для работы с фильмами.
@@ -114,4 +115,34 @@ func (h *MovieHandler) LastMovie(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(movie)
+}
+
+// Search godoc
+// @Summary      Поиск фильмов
+// @Description  Ищет фильмы по словам в названии и режиссере, используя Redis.
+// @Tags         movies
+// @Produce      json
+// @Param        q query string true "Поисковый запрос"
+// @Success      200  {array}  domain.Movie
+// @Failure      400  {object} map[string]string "Неверный запрос"
+// @Failure      500  {object} map[string]string "Внутренняя ошибка"
+// @Router       /search [get]
+func (h *MovieHandler) Search(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+
+	q = strings.TrimSpace(q)
+
+	if q == "" {
+		http.Error(w, "query parameter 'q' is required", http.StatusBadRequest)
+		return
+	}
+
+	movies, err := h.uc.Search(r.Context(), q)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(movies)
 }
