@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 
-	"log"
 	"mygo/internal/cache"
 	"mygo/internal/domain"
 	"mygo/internal/repository"
@@ -57,11 +56,7 @@ func (u *movieUseCase) LoadMovies(ctx context.Context, from, to int) (*LoadResul
 
 	found, err := u.repo.GetRange(ctx, from, to)
 	if err != nil {
-		if err.Error() == "database is unavailable" {
-			log.Printf("WARNING: database is unavailable, returning empty result for load-movies")
-			return &LoadResult{Movies: []domain.Movie{}, MissingIDs: []int{}}, nil
-		}
-		return nil, err
+		return &LoadResult{Movies: []domain.Movie{}, MissingIDs: []int{}}, nil
 	}
 
 	have := make(map[int]struct{}, len(found))
@@ -89,10 +84,7 @@ func (u *movieUseCase) LoadMovies(ctx context.Context, from, to int) (*LoadResul
 func (u *movieUseCase) GetLastMovie(ctx context.Context) (domain.Movie, error) {
 	m, err := u.repo.GetMax(ctx)
 	if err != nil {
-		if err.Error() == "database is unavailable" {
-			return domain.Movie{}, domain.ErrMovieNotFound // Возвращаем 404
-		}
-		return domain.Movie{}, err
+		return domain.Movie{}, domain.ErrMovieNotFound
 	}
 	return m, nil
 }
