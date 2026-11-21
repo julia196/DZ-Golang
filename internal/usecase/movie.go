@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 
+	"log"
 	"mygo/internal/cache"
 	"mygo/internal/domain"
 	"mygo/internal/repository"
@@ -56,8 +57,8 @@ func (u *movieUseCase) LoadMovies(ctx context.Context, from, to int) (*LoadResul
 
 	found, err := u.repo.GetRange(ctx, from, to)
 	if err != nil {
-		// Если база данных недоступна, возвращаем пустой результат, чтобы не падать с 500
 		if err.Error() == "database is unavailable" {
+			log.Printf("WARNING: database is unavailable, returning empty result for load-movies")
 			return &LoadResult{Movies: []domain.Movie{}, MissingIDs: []int{}}, nil
 		}
 		return nil, err
